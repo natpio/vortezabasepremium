@@ -24,10 +24,10 @@ REPO_OWNER = "natpio"
 REPO_NAME = "vortezabasepremium"
 SHEET_ID = "1Z70GhPQAOOJhWDam_-cyRIhdRhZgK-dt7N9Ds_nldBM"
 
-def weryfikacja_dostepu(wpisane_haslo):
-    """Łączy się z centralnym arkuszem zarządzania i sprawdza dostęp."""
+def weryfikacja_subskrypcji():
+    """Łączy się z Twoim centralnym arkuszem zarządzania i sprawdza status firmy."""
     try:
-        # Używamy połączenia gsheets zdefiniowanego w Secrets (Twoja baza klientów)
+        # Połączenie GSheets z Twoimi głównymi kluczami admina
         conn_admin = st.connection("gsheets", type=GSheetsConnection)
         df_klienci = conn_admin.read(ttl=0)
         
@@ -36,18 +36,13 @@ def weryfikacja_dostepu(wpisane_haslo):
         
         if not klient.empty:
             status = klient.iloc[0]['status_aktywny']
-            prawidlowe_haslo = str(klient.iloc[0]['haslo'])
-            
-            # Sprawdzenie blokady
+            # Jeśli status jest False (lub 0), blokujemy dostęp niezależnie od hasła użytkownika
             if str(status).upper() == "FALSE" or status == 0 or status == False:
                 return "BLOKADA"
-            
-            # Sprawdzenie hasła
-            if wpisane_haslo == prawidlowe_haslo:
-                return "OK"
-        return "BLAD_HASLA"
+            return "AKTYWNA"
+        return "BRAK_KLIENTA"
     except Exception as e:
-        st.error(f"Błąd autoryzacji systemowej: {e}")
+        st.error(f"Błąd krytyczny autoryzacji: {e}")
         return "ERROR"
 
 def get_github_file(file_path):
@@ -78,7 +73,7 @@ def get_bg_base64():
 
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    # WAŻNE: W secrets tej aplikacji muszą być Twoje dane konta serwisowego GCP
+    # Tutaj używane są lokalne dane GCP tej aplikacji (z Twojego secrets)
     cred_data = st.secrets["GCP_SERVICE_ACCOUNT"]
     credentials = Credentials.from_service_account_info(cred_data, scopes=scope)
     return gspread.authorize(credentials)
@@ -177,17 +172,25 @@ if not st.session_state.auth:
         st.markdown("<h1 class='vorteza-header'>SYSTEM ACCESS</h1>", unsafe_allow_html=True)
         u = st.text_input("OPERATOR ID")
         p = st.text_input("SECURITY KEY", type="password")
+        
         if st.button("AUTHORIZE"):
-            wynik = weryfikacja_dostepu(p)
+            # 1. Sprawdź czy subskrypcja dla całej firmy jest aktywna
+            stan_sub = weryfikacja_subskrypcji()
             
-            if wynik == "OK":
-                st.session_state.auth, st.session_state.user = True, u
-                st.rerun()
-            elif wynik == "BLOKADA":
-                st.error("Twoja subskrypcja wygasła lub dostęp został zablokowany.")
-            else: 
-                st.error("Błędny klucz bezpieczeństwa.")
+            if stan_sub == "BLOKADA":
+                st.error("Dostęp do systemu został zawieszony. Skontaktuj się z administratorem.")
+            elif stan_sub == "AKTYWNA":
+                # 2. Jeśli firma ma dostęp, sprawdź hasło konkretnego pracownika (admina/kierowcy)
+                users = st.secrets.get("USERS", {})
+                if u in users and str(users[u]) == p:
+                    st.session_state.auth, st.session_state.user = True, u
+                    st.rerun()
+                else: 
+                    st.error("Błędny ID lub klucz bezpieczeństwa.")
+            else:
+                st.error("Problem z serwerem autoryzacji. Spróbuj później.")
 else:
+    # Rola dyspozytora dla loginu 'admin' lub 'dyspozytor'
     is_dispatcher = any(x in st.session_state.user.lower() for x in ["dyspozytor", "admin"])
     
     with st.sidebar:
