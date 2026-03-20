@@ -15,9 +15,10 @@ try:
 except:
     GITHUB_TOKEN = None 
 
+# ZAKTUALIZOWANE DANE REPOZYTORIUM I ARKUSZA
 REPO_OWNER = "natpio"
-REPO_NAME = "vortezabasepep"
-SHEET_ID = "1JV-vXpwAbvvboQd7eijashVmS3kkOqTf_LJrbrsWSxo"
+REPO_NAME = "vortezabasepremium"
+SHEET_ID = "1Z70GhPQAOOJhWDam_-cyRIhdRhZgK-dt7N9Ds_nldBM"
 
 def get_github_file(file_path):
     if not GITHUB_TOKEN: 
@@ -47,8 +48,9 @@ def get_bg_base64():
 
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds_info = st.secrets["GCP_SERVICE_ACCOUNT"]
-    credentials = Credentials.from_service_account_info(creds_info, scopes=scope)
+    # Pobieranie całości sekcji GCP_SERVICE_ACCOUNT z secrets
+    cred_data = st.secrets["GCP_SERVICE_ACCOUNT"]
+    credentials = Credentials.from_service_account_info(cred_data, scopes=scope)
     return gspread.authorize(credentials)
 
 def load_from_google_sheets():
@@ -58,7 +60,7 @@ def load_from_google_sheets():
         data = sheet.get_all_records()
         return pd.DataFrame(data)
     except Exception as e:
-        st.error(f"Błąd: {e}")
+        st.error(f"Błąd odczytu arkusza: {e}")
         return pd.DataFrame()
 
 def save_to_google_sheets(row_data):
@@ -77,7 +79,7 @@ def delete_row_from_sheets(row_index):
         sheet.delete_rows(row_index + 2)
         return True
     except Exception as e:
-        st.error(f"Błąd: {e}")
+        st.error(f"Błąd usuwania: {e}")
         return False
 
 def resolve_single_fault(row_index, fault_to_remove, current_status):
@@ -93,7 +95,7 @@ def resolve_single_fault(row_index, fault_to_remove, current_status):
         sheet.update_cell(row_index + 2, 5, new_status)
         return True
     except Exception as e:
-        st.error(f"Błąd: {e}")
+        st.error(f"Błąd aktualizacji usterki: {e}")
         return False
 
 # =========================================================
