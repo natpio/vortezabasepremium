@@ -6,19 +6,49 @@ import gspread
 import pandas as pd
 from datetime import datetime
 from google.oauth2.service_account import Credentials
+from streamlit_gsheets import GSheetsConnection
 
 # =========================================================
 # 1. KONFIGURACJA I ZASOBY
 # =========================================================
+# ID tej konkretnej aplikacji w Twoim Panelu Admina
+MOJE_KLIENT_ID = "Vorteza_Premium" 
+
 try:
     GITHUB_TOKEN = st.secrets["G_TOKEN"]
 except:
     GITHUB_TOKEN = None 
 
-# ZAKTUALIZOWANE DANE REPOZYTORIUM I ARKUSZA
+# DANE REPOZYTORIUM I ARKUSZA OPERACYJNEGO (Logistyka)
 REPO_OWNER = "natpio"
 REPO_NAME = "vortezabasepremium"
 SHEET_ID = "1Z70GhPQAOOJhWDam_-cyRIhdRhZgK-dt7N9Ds_nldBM"
+
+def weryfikacja_dostepu(wpisane_haslo):
+    """Łączy się z centralnym arkuszem zarządzania i sprawdza dostęp."""
+    try:
+        # Używamy połączenia gsheets zdefiniowanego w Secrets (Twoja baza klientów)
+        conn_admin = st.connection("gsheets", type=GSheetsConnection)
+        df_klienci = conn_admin.read(ttl=0)
+        
+        # Szukamy wiersza dla Vorteza_Premium
+        klient = df_klienci[df_klienci['klient_id'] == MOJE_KLIENT_ID]
+        
+        if not klient.empty:
+            status = klient.iloc[0]['status_aktywny']
+            prawidlowe_haslo = str(klient.iloc[0]['haslo'])
+            
+            # Sprawdzenie blokady
+            if str(status).upper() == "FALSE" or status == 0 or status == False:
+                return "BLOKADA"
+            
+            # Sprawdzenie hasła
+            if wpisane_haslo == prawidlowe_haslo:
+                return "OK"
+        return "BLAD_HASLA"
+    except Exception as e:
+        st.error(f"Błąd autoryzacji systemowej: {e}")
+        return "ERROR"
 
 def get_github_file(file_path):
     if not GITHUB_TOKEN: 
@@ -48,7 +78,7 @@ def get_bg_base64():
 
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    # Pobieranie całości sekcji GCP_SERVICE_ACCOUNT z secrets
+    # WAŻNE: W secrets tej aplikacji muszą być Twoje dane konta serwisowego GCP
     cred_data = st.secrets["GCP_SERVICE_ACCOUNT"]
     credentials = Credentials.from_service_account_info(cred_data, scopes=scope)
     return gspread.authorize(credentials)
@@ -148,12 +178,15 @@ if not st.session_state.auth:
         u = st.text_input("OPERATOR ID")
         p = st.text_input("SECURITY KEY", type="password")
         if st.button("AUTHORIZE"):
-            users = st.secrets.get("USERS", {})
-            if u in users and str(users[u]) == p:
+            wynik = weryfikacja_dostepu(p)
+            
+            if wynik == "OK":
                 st.session_state.auth, st.session_state.user = True, u
                 st.rerun()
+            elif wynik == "BLOKADA":
+                st.error("Twoja subskrypcja wygasła lub dostęp został zablokowany.")
             else: 
-                st.error("Access Denied")
+                st.error("Błędny klucz bezpieczeństwa.")
 else:
     is_dispatcher = any(x in st.session_state.user.lower() for x in ["dyspozytor", "admin"])
     
