@@ -6,44 +6,19 @@ import gspread
 import pandas as pd
 from datetime import datetime
 from google.oauth2.service_account import Credentials
-from streamlit_gsheets import GSheetsConnection
 
 # =========================================================
 # 1. KONFIGURACJA I ZASOBY
 # =========================================================
-# ID tej konkretnej aplikacji w Twoim Panelu Admina
-MOJE_KLIENT_ID = "Vorteza_Premium" 
-
 try:
     GITHUB_TOKEN = st.secrets["G_TOKEN"]
 except:
     GITHUB_TOKEN = None 
 
-# DANE REPOZYTORIUM I ARKUSZA OPERACYJNEGO (Logistyka)
+# ZAKTUALIZOWANE DANE REPOZYTORIUM I ARKUSZA
 REPO_OWNER = "natpio"
 REPO_NAME = "vortezabasepremium"
 SHEET_ID = "1Z70GhPQAOOJhWDam_-cyRIhdRhZgK-dt7N9Ds_nldBM"
-
-def weryfikacja_subskrypcji():
-    """Łączy się z Twoim centralnym arkuszem zarządzania i sprawdza status firmy."""
-    try:
-        # Połączenie GSheets z Twoimi głównymi kluczami admina
-        conn_admin = st.connection("gsheets", type=GSheetsConnection)
-        df_klienci = conn_admin.read(ttl=0)
-        
-        # Szukamy wiersza dla Vorteza_Premium
-        klient = df_klienci[df_klienci['klient_id'] == MOJE_KLIENT_ID]
-        
-        if not klient.empty:
-            status = klient.iloc[0]['status_aktywny']
-            # Jeśli status jest False (lub 0), blokujemy dostęp niezależnie od hasła użytkownika
-            if str(status).upper() == "FALSE" or status == 0 or status == False:
-                return "BLOKADA"
-            return "AKTYWNA"
-        return "BRAK_KLIENTA"
-    except Exception as e:
-        st.error(f"Błąd krytyczny autoryzacji: {e}")
-        return "ERROR"
 
 def get_github_file(file_path):
     if not GITHUB_TOKEN: 
@@ -73,7 +48,7 @@ def get_bg_base64():
 
 def get_gspread_client():
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    # Tutaj używane są lokalne dane GCP tej aplikacji (z Twojego secrets)
+    # Pobieranie całości sekcji GCP_SERVICE_ACCOUNT z secrets
     cred_data = st.secrets["GCP_SERVICE_ACCOUNT"]
     credentials = Credentials.from_service_account_info(cred_data, scopes=scope)
     return gspread.authorize(credentials)
@@ -172,25 +147,14 @@ if not st.session_state.auth:
         st.markdown("<h1 class='vorteza-header'>SYSTEM ACCESS</h1>", unsafe_allow_html=True)
         u = st.text_input("OPERATOR ID")
         p = st.text_input("SECURITY KEY", type="password")
-        
         if st.button("AUTHORIZE"):
-            # 1. Sprawdź czy subskrypcja dla całej firmy jest aktywna
-            stan_sub = weryfikacja_subskrypcji()
-            
-            if stan_sub == "BLOKADA":
-                st.error("Dostęp do systemu został zawieszony. Skontaktuj się z administratorem.")
-            elif stan_sub == "AKTYWNA":
-                # 2. Jeśli firma ma dostęp, sprawdź hasło konkretnego pracownika (admina/kierowcy)
-                users = st.secrets.get("USERS", {})
-                if u in users and str(users[u]) == p:
-                    st.session_state.auth, st.session_state.user = True, u
-                    st.rerun()
-                else: 
-                    st.error("Błędny ID lub klucz bezpieczeństwa.")
-            else:
-                st.error("Problem z serwerem autoryzacji. Spróbuj później.")
+            users = st.secrets.get("USERS", {})
+            if u in users and str(users[u]) == p:
+                st.session_state.auth, st.session_state.user = True, u
+                st.rerun()
+            else: 
+                st.error("Access Denied")
 else:
-    # Rola dyspozytora dla loginu 'admin' lub 'dyspozytor'
     is_dispatcher = any(x in st.session_state.user.lower() for x in ["dyspozytor", "admin"])
     
     with st.sidebar:
